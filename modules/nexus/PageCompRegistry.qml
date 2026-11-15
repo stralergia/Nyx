@@ -54,6 +54,14 @@ QtObject {
             }
         },
         Component {
+            // Input
+            StackPage {
+                Component {
+                    InputPage {}
+                }
+            }
+        },
+        Component {
             // Network
             StackPage {
                 Component {

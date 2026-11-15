@@ -23,6 +23,12 @@ QtObject {
              category: "connectivity"
         },
         {
+         label: Tr.tr("Input"),
+         icon: "mouse",
+         description: Tr.tr("Mouse, touchpad, scrolling"),
+         category: "connectivity"
+        },
+        {
             label: Tr.tr("Network"),
             icon: "wifi",
             description: Tr.tr("Wi-Fi, ethernet, VPN"),
