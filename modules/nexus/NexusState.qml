@@ -9,7 +9,7 @@ QtObject {
     property int currentPageIdx
     property list<int> subPageIdxStack
     property bool searchOpen
-
+    property var selectedMonitor: null
     property string selectedWallpaperCategory
     property BluetoothDevice selectedBtDevice
     property DesktopEntry selectedApp
