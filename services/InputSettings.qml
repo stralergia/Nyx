@@ -6,12 +6,6 @@ import Quickshell.Io
 import qs.services
 import qs.utils
 
-// NOTE(fork): mouse, scroll and touchpad options live in Hyprland, and changing them from Nexus
-// is a runtime keyword, which is forgotten the moment the config is reloaded or the session
-// restarts. Anything changed here is therefore both applied straight away and written into
-// ~/.config/caelestia/hypr-user.lua, the user config the dots' hyprland.lua requires last - that
-// is what makes the choices survive a reboot. Only the options that were actually touched are
-// written, so everything else in the user's own hyprland config still wins.
 Singleton {
     id: root
 
@@ -22,22 +16,17 @@ Singleton {
     readonly property string touchpadScrollFactorKey: "input:touchpad:scroll_factor"
     readonly property string naturalScrollKey: "input:touchpad:natural_scroll"
 
-    // Sourced last by ~/.config/hypr/hyprland.lua, and created empty by it if it is missing
     readonly property string configPath: `${Paths.config}/hypr-user.lua`
 
-    // Kept in memory while a slider is dragged so the UI follows it. Applying makes the shell
-    // re-read every Hyprland option, so it is only done once the value settles rather than on
-    // every mouse move.
     property var overrides: ({})
-    // The config file as it is on disk, so the managed block can be rewritten without touching
-    // anything else the user has in there
     property string savedText: ""
     property bool loaded: false
-    // The managed block parsed back off disk. overrides only ever holds what was changed in this
-    // session, and a write replaces the whole block, so without this a setting changed today
-    // would delete every setting made before the last restart - which is what stopped these
-    // surviving a reboot.
     property var fileOverrides: ({})
+
+    // Cursor state
+    property var cursorThemes: ["default"]
+    property string cursorTheme: "default"
+    property int cursorSize: 24
 
     readonly property real sensitivity: root.current(root.sensitivityKey, 0)
     readonly property string accelProfile: root.current(root.accelProfileKey, "")
@@ -45,15 +34,6 @@ Singleton {
     readonly property real touchpadScrollFactor: root.current(root.touchpadScrollFactorKey, 1)
     readonly property bool naturalScroll: root.current(root.naturalScrollKey, false)
 
-    // What this session changed, then what the managed block already says, then the option's own
-    // default. A shell reload leaves overrides empty, so without the block in the middle every
-    // slider on the page snapped back to its default afterwards - while the setting itself was
-    // still in force, which is what made them look like they had not survived.
-    //
-    // Hyprland is not asked. Hypr.options comes from `hyprctl descriptions`, whose "current" is
-    // not the live value: on this version it reads 0 for a sensitivity that is really 1, and
-    // false for blur that is really on. The block is written here and sourced last by the user's
-    // hyprland.lua, so for the options this page owns it is the authority anyway
     function current(key: string, fallback: var): var {
         return root.overrides[key] ?? root.fileOverrides[key] ?? fallback;
     }
@@ -65,12 +45,22 @@ Singleton {
         commitTimer.restart();
     }
 
-    // Acceleration is two Hyprland options: the profile, and the flag that switches acceleration
-    // off outright. A config that pins force_no_accel - the dots' own user config does - would
-    // otherwise ignore whatever the profile says, so both move with the switch.
     function setAccel(enabled: bool): void {
         root.set(root.accelProfileKey, enabled ? "adaptive" : "flat");
         root.set(root.forceNoAccelKey, !enabled);
+    }
+
+    function setCursor(theme: string, size: int): void {
+        root.cursorTheme = theme;
+        root.cursorSize = size;
+        props.cursorTheme = theme;
+        props.cursorSize = size;
+        cursorProc.command = [
+            "sh", "-c",
+            `hyprctl setcursor "${theme}" ${size}; gsettings set org.gnome.desktop.interface cursor-theme "${theme}" 2>/dev/null || true; gsettings set org.gnome.desktop.interface cursor-size ${size} 2>/dev/null || true`
+        ];
+        cursorProc.running = true;
+        commitTimer.restart();
     }
 
     function apply(): void {
@@ -87,8 +77,6 @@ Singleton {
     readonly property string blockStart: "-- >>> caelestia input settings"
     readonly property string blockEnd: "-- <<< caelestia input settings"
 
-    // "input:touchpad:scroll_factor" -> { input: { touchpad: { scroll_factor: ... } } }, which is
-    // the table shape hl.config takes and the same one Hypr.extras builds for its own eval
     function nest(overrides: var): var {
         const nested = {};
         for (const key in overrides) {
@@ -104,8 +92,6 @@ Singleton {
         return nested;
     }
 
-    // Lua strings are quoted, everything else is written as it is, so true/false and numbers
-    // land in the config as the types Hyprland expects
     function luaValue(value: var): string {
         if (typeof value === "string")
             return `"${value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"`;
@@ -113,8 +99,6 @@ Singleton {
     }
 
     function luaTable(table: var, indent: string): string {
-        // Sorted, so the block comes out the same no matter which settings were moved in what
-        // order and a change only ever touches the lines it has to
         return Object.keys(table).sort().map(key => {
             const value = table[key];
             if (value !== null && typeof value === "object")
@@ -123,7 +107,6 @@ Singleton {
         }).join("\n");
     }
 
-    // Reads a value back out of the block exactly as luaValue() wrote it
     function parseLuaValue(raw: string): var {
         const value = raw.trim();
         if (value === "true")
@@ -136,9 +119,6 @@ Singleton {
         return value !== "" && Number.isFinite(num) ? num : value;
     }
 
-    // The block is written by block() below, so its shape is known exactly: an hl.config({ ... })
-    // wrapper around nested `key = {` tables and `key = value,` leaves. Parsed back into the flat
-    // "input:touchpad:scroll_factor" keys that set() and Hypr.extras.applyOptions() both use.
     function parseBlock(text: string): var {
         const start = text.indexOf(root.blockStart);
         if (start === -1)
@@ -147,11 +127,21 @@ Singleton {
         if (end === -1)
             return ({});
 
+        const blockText = text.slice(start + root.blockStart.length, end);
+
+        const themeMatch = /hl\.env\("(?:HYPRCURSOR|XCURSOR)_THEME",\s*"([^"]+)"\)/.exec(blockText);
+        if (themeMatch)
+            root.cursorTheme = themeMatch[1];
+
+        const sizeMatch = /hl\.env\("(?:HYPRCURSOR|XCURSOR)_SIZE",\s*"(\d+)"\)/.exec(blockText);
+        if (sizeMatch)
+            root.cursorSize = parseInt(sizeMatch[1], 10);
+
         const parsed = {};
         const path = [];
-        for (const raw of text.slice(start + root.blockStart.length, end).split("\n")) {
+        for (const raw of blockText.split("\n")) {
             const line = raw.trim();
-            if (line === "" || line.startsWith("--") || line.startsWith("hl.config") || line === "})")
+            if (line === "" || line.startsWith("--") || line.startsWith("hl.config") || line.startsWith("hl.env") || line === "})")
                 continue;
             if (line === "}," || line === "}") {
                 path.pop();
@@ -171,41 +161,75 @@ Singleton {
         return parsed;
     }
 
-    // What the block already held, with this session's changes on top
     function merged(): var {
         return Object.assign({}, root.fileOverrides, root.overrides);
     }
 
     function block(): string {
-        return `${root.blockStart}\nhl.config({\n${root.luaTable(root.nest(root.merged()), "    ")}\n})\n${root.blockEnd}\n`;
+        let out = `${root.blockStart}\n`;
+        const m = root.merged();
+        if (Object.keys(m).length > 0) {
+            out += `hl.config({\n${root.luaTable(root.nest(m), "    ")}\n})\n`;
+        }
+        out += `hl.env("XCURSOR_THEME", ${root.luaValue(root.cursorTheme)})\n`;
+        out += `hl.env("XCURSOR_SIZE", "${root.cursorSize}")\n`;
+        out += `hl.env("HYPRCURSOR_THEME", ${root.luaValue(root.cursorTheme)})\n`;
+        out += `hl.env("HYPRCURSOR_SIZE", "${root.cursorSize}")\n`;
+        out += `${root.blockEnd}\n`;
+        return out;
     }
 
-    // Appended to the end of the file, so it is read after whatever the user wrote there and wins
-    // for the options it names. The previous block is matched by its markers and replaced, so
-    // changing a setting twice does not leave two of them behind.
     function replaced(text: string): string {
         const body = text.replace(/-- >>> caelestia input settings[\s\S]*?-- <<< caelestia input settings\n?/g, "").replace(/\s+$/, "");
         return `${body}${body ? "\n\n" : ""}${root.block()}`;
     }
 
     function write(): void {
-        // Without the file's own contents a write would throw the user's config away, and an
-        // empty override set would leave an empty - and broken - block behind
-        if (!root.loaded || Object.keys(root.overrides).length === 0)
+        if (!root.loaded)
             return;
 
         const next = root.replaced(root.savedText);
-        // Rewriting identical content would only churn the file
         if (next !== root.savedText)
             storage.setText(next);
     }
 
-    // What was changed before the last reload, so the page reads right in the moment before the
-    // file comes back off disk (and still does if it cannot be read at all). Everything in here
-    // was written to the block as well, so the file replaces it rather than disagreeing with it
     Component.onCompleted: {
-        if (!root.loaded)
+        if (!root.loaded) {
             root.fileOverrides = Object.assign({}, props.overrides);
+            if (props.cursorTheme)
+                root.cursorTheme = props.cursorTheme;
+            if (props.cursorSize > 0)
+                root.cursorSize = props.cursorSize;
+        }
+        scanThemesProc.running = true;
+    }
+
+    Process {
+        id: scanThemesProc
+        command: [
+            "sh", "-c",
+            "find /usr/share/icons ~/.local/share/icons ~/.icons -mindepth 2 -maxdepth 2 -type d -name cursors 2>/dev/null | xargs -r -n1 dirname | xargs -r -n1 basename | sort -u"
+        ]
+        stdout: SplitParser {
+            splitMarker: ""
+            onRead: data => {
+                const rawList = data.trim().split("\n").map(s => s.trim()).filter(s => s.length > 0);
+                // Kalabalık yapan gereksiz varyantları filtrele (sadece ana/temiz temalar kalsın)
+                const filtered = rawList.filter(s => {
+                    const lower = s.toLowerCase();
+                    if (lower.includes("-right")) return false;
+                    if (lower.includes("-original")) return false;
+                    if (lower.includes("-ice")) return false;
+                    if (lower.includes("-amber")) return false;
+                    return true;
+                });
+                root.cursorThemes = filtered.length > 0 ? filtered : rawList;
+            }
+        }
+    }
+
+    Process {
+        id: cursorProc
     }
 
     Timer {
@@ -217,8 +241,6 @@ Singleton {
 
     Connections {
         function onConfigReloaded(): void {
-            // A reload puts the config file's own values back, so anything changed here that has
-            // not been written down yet would be lost without this
             root.apply();
         }
 
@@ -236,12 +258,9 @@ Singleton {
             root.savedText = text();
             root.fileOverrides = root.parseBlock(root.savedText);
             root.loaded = true;
-            // Anything changed before this could be written down lands in the config now
             root.write();
         }
         onLoadFailed: err => {
-            // The dots create the file on the next Hyprland start, so there is nothing to
-            // preserve - only the block to add
             if (err === FileViewError.FileNotFound) {
                 root.savedText = "";
                 root.fileOverrides = ({});
@@ -255,6 +274,8 @@ Singleton {
         id: props
 
         property var overrides: ({})
+        property string cursorTheme: "default"
+        property int cursorSize: 24
 
         reloadableId: "inputSettings"
     }

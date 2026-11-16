@@ -30,6 +30,59 @@ PageBase {
         }
     ]
 
+    readonly property list<int> cursorSizes: [20, 24, 32, 36, 42, 46, 48, 64]
+
+    resources: [
+        Instantiator {
+            id: themeInstantiator
+
+            property var items: []
+
+            model: InputSettings.cursorThemes
+            onObjectAdded: (index, object) => {
+                const next = themeInstantiator.items.slice();
+                next.splice(index, 0, object);
+                themeInstantiator.items = next;
+            }
+            onObjectRemoved: (index, object) => {
+                const next = themeInstantiator.items.slice();
+                next.splice(index, 1);
+                themeInstantiator.items = next;
+            }
+
+            delegate: MenuItem {
+                required property string modelData
+
+                text: modelData
+                onClicked: InputSettings.setCursor(modelData, InputSettings.cursorSize)
+            }
+        },
+        Instantiator {
+            id: sizeInstantiator
+
+            property var items: []
+
+            model: root.cursorSizes
+            onObjectAdded: (index, object) => {
+                const next = sizeInstantiator.items.slice();
+                next.splice(index, 0, object);
+                sizeInstantiator.items = next;
+            }
+            onObjectRemoved: (index, object) => {
+                const next = sizeInstantiator.items.slice();
+                next.splice(index, 1);
+                sizeInstantiator.items = next;
+            }
+
+            delegate: MenuItem {
+                required property int modelData
+
+                text: modelData + " px"
+                onClicked: InputSettings.setCursor(InputSettings.cursorTheme, modelData)
+            }
+        }
+    ]
+
     title: Tr.tr("Input")
 
     ColumnLayout {
@@ -104,6 +157,47 @@ PageBase {
             onSelected: item => InputSettings.set(InputSettings.naturalScrollKey, root.scrollTypeItems.indexOf(item) === 0)
         }
 
+        // Cursor
+        SectionHeader {
+            text: Tr.tr("Cursor")
+        }
+
+        SelectRow {
+            first: true
+            label: Tr.tr("Cursor theme")
+            subtext: Tr.tr("Pointer icon theme applied across Hyprland and GTK")
+            menuItems: themeInstantiator.items
+            active: {
+                const idx = InputSettings.cursorThemes.indexOf(InputSettings.cursorTheme);
+                return idx >= 0 ? (themeInstantiator.items[idx] ?? null) : null;
+            }
+            fallbackText: InputSettings.cursorTheme
+            fallbackIcon: "arrow_selector_tool"
+            onSelected: item => {
+                const idx = themeInstantiator.items.indexOf(item);
+                if (idx >= 0)
+                    InputSettings.setCursor(InputSettings.cursorThemes[idx], InputSettings.cursorSize);
+            }
+        }
+
+        SelectRow {
+            last: true
+            label: Tr.tr("Cursor size")
+            subtext: Tr.tr("Size of the pointer in pixels")
+            menuItems: sizeInstantiator.items
+            active: {
+                const idx = root.cursorSizes.indexOf(InputSettings.cursorSize);
+                return idx >= 0 ? (sizeInstantiator.items[idx] ?? null) : null;
+            }
+            fallbackText: InputSettings.cursorSize + " px"
+            fallbackIcon: "straighten"
+            onSelected: item => {
+                const idx = sizeInstantiator.items.indexOf(item);
+                if (idx >= 0)
+                    InputSettings.setCursor(InputSettings.cursorTheme, root.cursorSizes[idx]);
+            }
+        }
+
         StyledText {
             Layout.fillWidth: true
             Layout.topMargin: Tokens.spacing.medium
@@ -115,7 +209,7 @@ PageBase {
 
         Item {
             Layout.fillWidth: true
-            Layout.fillHeight: true
+            Layout.preferredHeight: Tokens.spacing.extraLarge * 4
         }
     }
 }
