@@ -61,6 +61,12 @@ QtObject {
             description: Tr.tr("Manage plugins"),
             category: "system"
         },
+        {
+            label: Tr.tr("Power & battery"),
+            icon: "battery_charging_full",
+            description: Tr.tr("Power profiles, battery thresholds, idle"),
+            category: "system"
+        },
 
         // Shell
         {

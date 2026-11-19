@@ -17,6 +17,7 @@ import qs.modules.nexus.pages.services
 import qs.modules.nexus.pages.wallandstyle
 import qs.modules.nexus.pages.panels.taskbar
 import qs.modules.nexus.pages.monitors
+import qs.modules.nexus.pages.battery
 
 QtObject {
     id: root
@@ -119,6 +120,14 @@ QtObject {
         },
         Component {
             PlaceholderComp {}
+        },
+        Component {
+            // Power & battery
+            StackPage {
+                Component {
+                    BatteryPage {}
+                }
+            }
         },
 
         // Shell
