@@ -323,16 +323,50 @@ PageBase {
         }
 
         RefreshRateSelector {
+            visible: root.behaviourTab === "powerSaver"
             first: true
             label: Tr.tr("Refresh rate")
             showRestore: true
             showUnchanged: true
-            value: root.pm.profileBehaviors[root.behaviourTab].setRefreshRate
-            onRateChanged: v => root.pm.profileBehaviors[root.behaviourTab].setRefreshRate = v
+            value: root.pm.profileBehaviors.powerSaver.setRefreshRate
+            onRateChanged: v => root.pm.profileBehaviors.powerSaver.setRefreshRate = v
+        }
+
+        RefreshRateSelector {
+            visible: root.behaviourTab === "balanced"
+            first: true
+            label: Tr.tr("Refresh rate")
+            showRestore: true
+            showUnchanged: true
+            value: root.pm.profileBehaviors.balanced.setRefreshRate
+            onRateChanged: v => root.pm.profileBehaviors.balanced.setRefreshRate = v
+        }
+
+        RefreshRateSelector {
+            visible: root.behaviourTab === "performance"
+            first: true
+            label: Tr.tr("Refresh rate")
+            showRestore: true
+            showUnchanged: true
+            value: root.pm.profileBehaviors.performance.setRefreshRate
+            onRateChanged: v => root.pm.profileBehaviors.performance.setRefreshRate = v
         }
 
         EffectRows {
-            target: root.pm.profileBehaviors[root.behaviourTab]
+            visible: root.behaviourTab === "powerSaver"
+            target: root.pm.profileBehaviors.powerSaver
+            lastRow: true
+        }
+
+        EffectRows {
+            visible: root.behaviourTab === "balanced"
+            target: root.pm.profileBehaviors.balanced
+            lastRow: true
+        }
+
+        EffectRows {
+            visible: root.behaviourTab === "performance"
+            target: root.pm.profileBehaviors.performance
             lastRow: true
         }
 
