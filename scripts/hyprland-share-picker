@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ALLOW_TOKEN="0"
+for arg in "$@"; do
+    if [[ "$arg" == "--allow-token" ]]; then
+        ALLOW_TOKEN="1"
+    fi
+done
+
+QS_BIN=$(command -v qs || command -v quickshell || true)
+if [[ -z "$QS_BIN" ]]; then
+    exec /usr/bin/hyprland-share-picker "$@"
+fi
+
+printf "LIST=[%s]
+REQ_ID="$$-$(date +%s%N)"
+RES_FILE="/tmp/nyx-share-res-${REQ_ID}"
+rm -f "$RES_FILE"
+
+if ! "$QS_BIN" -c nyx ipc call sharepicker open "$REQ_ID" "${XDPH_WINDOW_SHARING_LIST:-}" "$ALLOW_TOKEN" >/dev/null 2>&1; then
+    exec /usr/bin/hyprland-share-picker "$@"
+fi
+
+for _ in $(seq 1 600); do
+    if [[ -f "$RES_FILE" ]]; then
+        sleep 0.05
+        RESULT=$(cat "$RES_FILE")
+        rm -f "$RES_FILE"
+        if [[ "$RESULT" == *"/region:slurp" ]]; then
+            FLAGS="${RESULT%%/*}"
+            GEOM=$(slurp -f "%o@%x,%y,%w,%h" 2>/dev/null || true)
+            if [[ -n "$GEOM" ]]; then
+                echo "${FLAGS}/region:${GEOM}"
+                exit 0
+            fi
+            exit 1
+        fi
+        if [[ -n "$RESULT" ]]; then
+            printf "OUT=[%s]
+            echo "$RESULT"
+            exit 0
+        fi
+        exit 1
+    fi
+    sleep 0.1
+done
+
+rm -f "$RES_FILE"
+exit 1

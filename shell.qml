@@ -14,6 +14,7 @@ import qs.modules.drawers
 import qs.modules.lock
 import qs.modules.polkit
 import qs.daemons
+import qs.modules.sharepicker
 
 ShellRoot {
     id: root
@@ -46,6 +47,7 @@ ShellRoot {
     Background {}
     Drawers {}
     AreaPicker {}
+    SharePicker {}
     Lock {
         id: lock
     }
